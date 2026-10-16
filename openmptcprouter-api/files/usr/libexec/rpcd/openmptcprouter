@@ -1346,7 +1346,8 @@ function wizard_add(args)
 	end
 
 	if _as_string(args.disableipv6, "") ~= "" then
-		disableipv6(_as_string(args.disableipv6, "1"))
+		-- omr-6in4 is restarted by restart_all_async() below
+		disableipv6(_as_string(args.disableipv6, "1"), false)
 	end
 
 	local new_vpn = _as_string(args.default_vpn, "")
@@ -1931,7 +1932,8 @@ function settings_add(args)
 	-- that missing/empty value as "disabled" (issue #4352). Treat blank the
 	-- same as absent: leave the current uci value untouched (fail-safe).
 	if _as_string(args.disable_ipv6, "") ~= "" then
-		disableipv6(_as_string(args.disable_ipv6, "1"))
+		-- omr-6in4 is restarted by apply_settings_async() below
+		disableipv6(_as_string(args.disable_ipv6, "1"), false)
 	end
 	_set_or_delete("openmptcprouter", "settings", "disable_6in4", _to_flag(args.disable_6in4))
 	_set_or_delete("openmptcprouter", "settings", "disable_modemmanager", _to_flag(args.disable_modemmanager))
@@ -2234,11 +2236,17 @@ function tcpfastopen(tcp_fastopen)
 	sys.exec("sed -i 's:^net.ipv4.tcp_fastopen=[0-9]*:net.ipv4.tcp_fastopen=%s:' /etc/sysctl.d/zzz_openmptcprouter.conf" % tcp_fastopen)
 end
 
-function disableipv6(disable_ipv6)
+-- restart false: the caller restarts omr-6in4 afterwards, as the wizard's and
+-- the settings page's async apply do. Restarted here as well, inside the rpcd
+-- call, it could take longer than LuCI waits for the answer (an IPv6 toggle
+-- restarts the trackers), and the save showed an error while it went on.
+function disableipv6(disable_ipv6, restart)
 	ucic:set("openmptcprouter","settings","disable_ipv6",disable_ipv6)
 	ucic:save("openmptcprouter")
 	ucic:commit("openmptcprouter")
-	sys.exec("/etc/init.d/omr-6in4 restart >/dev/null 2>/dev/null")
+	if restart ~= false then
+		sys.exec("/etc/init.d/omr-6in4 restart >/dev/null 2>/dev/null")
+	end
 end
 
 function externalcheck(externalcheck)
